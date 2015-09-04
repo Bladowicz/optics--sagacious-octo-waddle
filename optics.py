@@ -2,6 +2,7 @@
 import sys
 import scipy
 import numpy as np
+import itertools as it
 from math import sqrt
 from sklearn.metrics import hamming_loss
 from sklearn.neighbors import BallTree
@@ -12,14 +13,10 @@ from sklearn.preprocessing import StandardScaler
 
 class setOfObjects(object):
 
-    """Build balltree data structure with processing index from given data in preparation for OPTICS Algorithm
-    Parameters
-    ----------
-    data_points: array [n_samples, n_features]"""
-
-    def __init__(self,data_points):
+    def __init__(self,data_points, dist_dict):
         self._data_points   =   data_points
         self._n             =   len(data_points)
+        self._dist_dict     =   dist_dict
         self._processed     =   scipy.zeros((self._n,1),dtype=bool) ## Start all points as 'unprocessed' ##
         self._reachability  =   scipy.ones(self._n)*scipy.inf       ## Important! ##
         self._core_dist     =   scipy.ones(self._n)*scipy.nan
@@ -30,18 +27,103 @@ class setOfObjects(object):
         self._is_core       =   scipy.ones(self._n,dtype=bool)
         self._ordered_list  =   []                                  ### DO NOT switch this to a hash table, ordering is important ###
 
-    ## Used in prep step ##
     def _set_neighborhood(self, point, epsilon, dtype):
-        self._neighbors[point] = get_neighbors_dist(self, point, epsilon, dtype)[0]
+        print 'ddd'
+        self._neighbors[point] = self.get_neighbors_dist(point, epsilon, dtype)[0]
+        print self._neighbors[point]
         self._nneighbors[point] = len(self._neighbors[point])
 
-    ## Used in prep step ##
     def _set_core_dist(self, point, MinPts, dtype):
         dist = []
-        for j in [j for j in self._neighbors[point]]:
-            dist.append(distance(self._data_points[point], self._data_points[j], dtype))
+        print 'bbb'
+        for j in self._neighbors[point]:
+            print 'aaa', self._data_points[point], self._data_points[j], dtype
+            dist.append(self.distance(self._data_points[point], self._data_points[j], dtype))
         self._core_dist[point] = min_k(dist, MinPts)
 
+    def prep_optics(self, epsilon, MinPts, dtype = "euclidean"):
+        print 'ccc'
+        for i in self._index:
+            self._set_neighborhood(i, epsilon, dtype)
+        for j in self._index:
+            if self._nneighbors[j] >= MinPts:
+                self._set_core_dist(j, MinPts, dtype)
+        print('Core distances and neighborhoods prepped for ' + str(self._n) + ' points.')
+
+    def get_neighbors_dist(self, point, epsilon, dtype):
+        neigh = []
+        dist = []
+        for j in it.ifilter(lambda x: x!=point, self._index):
+#        for j in self._index if j != point:
+            d = self.distance(self._data_points[point], self._data_points[j], dtype)
+            if d <= epsilon:
+                print d , '<=', epsilon
+                neigh.append(j)
+                dist.append(d)
+        return neigh, dist
+
+    def distance(self, x, y, dtype):
+       # if dtype == "euclidean":
+       #     return sqrt(sum((x - y)**2))
+       # elif dtype == "hamming":
+       #     return hamming_loss(x, y)
+       # elif dtype == "banana":
+        try:
+            return self._dist_dict[tuple(sorted((x, y)))]
+        except KeyError as e:
+            for k,v in  self._dist_dict.iteritems():
+                print k,v
+            print (x, y)
+            raise(e)
+
+    def build_optics(self, epsilon, MinPts, Output_file_name, dtype = "euclidean"):
+        for point in self._index:
+            print self._processed[point]
+            if self._processed[point] == False:
+                self.expandClusterOrder(point, epsilon, MinPts, Output_file_name, dtype)
+
+
+    def expandClusterOrder(self, point, epsilon, MinPts, Output_file_name, dtype):
+        print self._core_dist[point], epsilon, self._core_dist[point] <= epsilon
+        if self._core_dist[point] <= epsilon:
+            while not self._processed[point]:
+                self._processed[point] = True
+                self._ordered_list.append(point)
+                with open(Output_file_name, 'a+') as file:
+                    file.write((str(point) + ', ' + str(self._reachability[point]) + '\n'))
+                    point = self.set_reach_dist(point, epsilon, dtype)
+        else:
+            self._processed[point] = True    # Probably not needed... #
+
+    def set_reach_dist(self, point_index, epsilon, dtype):
+        indices, distances = self.get_neighbors_dist(point_index, epsilon, dtype)
+        if scipy.iterable(distances):
+            unprocessed = ((self._processed[indices] < 1).T)[0].tolist()
+            unprocessed = filter_list(indices, unprocessed)
+            rdistances = scipy.maximum(filter_list(distances, unprocessed),self._core_dist[point_index])
+            self._reachability[unprocessed] = scipy.minimum(self._reachability[unprocessed], rdistances)
+            if len(unprocessed) > 0:
+                return sorted(zip(self._reachability[unprocessed],unprocessed), key=lambda reachability: reachability[0])[0][1]
+            else:
+                return point_index
+        else:
+            return point_index
+
+    def ExtractDBSCAN(self, epsilon_prime):
+        cluster_id = 0
+        for entry in self._ordered_list:
+            if self._reachability[entry] > epsilon_prime:
+                if self._core_dist[entry] <= epsilon_prime:
+                    cluster_id += 1
+                    self._cluster_id[entry] = cluster_id
+                else:
+                    self._cluster_id[entry] = -1
+            else:
+                self._cluster_id[entry] = cluster_id
+                if self._core_dist[entry] <= epsilon_prime:
+                    self._is_core[entry] = 1
+                else:
+                    self._is_core[entry] = 0
 
 
 def min_k(x, k):
@@ -57,155 +139,31 @@ def filter_list(x, y):
     return z
 
 
-def distance(x, y, dtype):
-#http://scikit-learn.org/stable/modules/generated/sklearn.metrics.hamming_loss.html
-#http://scikit-learn.org/stable/modules/generated/sklearn.neighbors.DistanceMetric.html
-    if dtype == "euclidean":
-        return sqrt(sum((x - y)**2))
-    elif dtype == "hamming":
-        return hamming_loss(x, y)
-    elif dtype == "banana":
-        return 0
 
 
-def get_neighbors_dist(SetofObjects, point, epsilon, dtype):
-    neigh = []
-    dist = []
-    for j in [j for j in SetofObjects._index if j != point]:
-        d = distance(SetofObjects._data_points[point], SetofObjects._data_points[j], dtype)
-        if d <= epsilon:
-            neigh.append(j)
-            dist.append(d)
-    return neigh, dist
 
 
 ## Prep Method ##
 
 ### Paralizeable! ###
-def prep_optics(SetofObjects, epsilon, MinPts, dtype = "euclidean"):
-
-    """Prep data set for main OPTICS loop
-    Parameters
-    ----------
-    SetofObjects: Instantiated instance of 'setOfObjects' class
-    epsilon: float or int
-        Determines maximum object size that can be extracted. Smaller epsilons reduce run time
-    MinPts: int
-        The minimum number of samples in a neighborhood to be considered a core point
-    Returns
-    -------
-    Modified setOfObjects tree structure"""
-
-    for i in SetofObjects._index:
-        SetofObjects._set_neighborhood(i, epsilon, dtype)
-    """moznaby usunac ten for"""
-    for j in SetofObjects._index:
-        if SetofObjects._nneighbors[j] >= MinPts:
-            SetofObjects._set_core_dist(j, MinPts, dtype)
-    print('Core distances and neighborhoods prepped for ' + str(SetofObjects._n) + ' points.')
-
+#def prep_optics(SetofObjects, epsilon, MinPts, dtype = "euclidean"):
+#    for i in SetofObjects._index:
+#        SetofObjects._set_neighborhood(i, epsilon, dtype)
+#    for j in SetofObjects._index:
+#        if SetofObjects._nneighbors[j] >= MinPts:
+#            SetofObjects._set_core_dist(j, MinPts, dtype)
+#    print('Core distances and neighborhoods prepped for ' + str(SetofObjects._n) + ' points.')
+#
 ## Main OPTICS loop ##
 
-def build_optics(SetOfObjects, epsilon, MinPts, Output_file_name, dtype = "euclidean"):
 
-    """Builds OPTICS ordered list of clustering structure
-    Parameters
-    ----------
-    SetofObjects: Instantiated and prepped instance of 'setOfObjects' class
-    epsilon: float or int
-        Determines maximum object size that can be extracted. Smaller epsilons reduce run time. This should be equal to epsilon in 'prep_optics'
-    MinPts: int
-        The minimum number of samples in a neighborhood to be considered a core point. Must be equal to MinPts used in 'prep_optics'
-    Output_file_name: string
-        Valid path where write access is available. Stores cluster structure"""
 
-    for point in SetOfObjects._index:
-        if SetOfObjects._processed[point] == False:
-            expandClusterOrder(SetOfObjects, point, epsilon, MinPts, Output_file_name, dtype)
-
-## OPTICS helper functions; these should not be public ##
-
-### NOT Paralizeable! The order that entries are written to the '_ordered_list' is important! ###
-def expandClusterOrder(SetOfObjects, point, epsilon, MinPts, Output_file_name, dtype):
-#    print "core_dist: %s" % SetOfObjects._core_dist[point]
-    if SetOfObjects._core_dist[point] <= epsilon:
-#        print SetOfObjects._processed[point]
-        while not SetOfObjects._processed[point]:
-            SetOfObjects._processed[point] = True
-            SetOfObjects._ordered_list.append(point)
-            ## Comment following two lines to not write to a text file ##
-            with open(Output_file_name, 'a+') as file:
-#                print SetOfObjects._reachability[point]
-                file.write((str(point) + ', ' + str(SetOfObjects._reachability[point]) + '\n'))
-                ## Keep following line! ##
-                point = set_reach_dist(SetOfObjects, point, epsilon, dtype)
-#        print('Object Found!')
-    else:
-        SetOfObjects._processed[point] = True    # Probably not needed... #
 
 
 ### As above, NOT paralizable! Paralizing would allow items in 'unprocessed' list to switch to 'processed' ###
-def set_reach_dist(SetOfObjects, point_index, epsilon, dtype):
-    ###  Assumes that the query returns ordered (smallest distance first) entries     ###
-    ###  This is the case for the balltree query...                                   ###
-    ###  ...switching to a query structure that does not do this will break things!   ###
-    ###  And break in a non-obvious way: For cases where multiple entries are tied in ###
-    ###  reachablitly distance, it will cause the next point to be processed in       ###
-    ###  random order, instead of the closest point. This may manefest in edge cases  ###
-    ###  where different runs of OPTICS will give different ordered lists and hence   ###
-    ###  different clustering structure...removing reproducability.                   ###
-
-    indices, distances = get_neighbors_dist(SetOfObjects, point_index, epsilon, dtype)
-
-    if scipy.iterable(distances):
-        unprocessed = ((SetOfObjects._processed[indices] < 1).T)[0].tolist()
-        unprocessed = filter_list(indices, unprocessed)
-        rdistances = scipy.maximum(filter_list(distances, unprocessed),SetOfObjects._core_dist[point_index])
-        SetOfObjects._reachability[unprocessed] = scipy.minimum(SetOfObjects._reachability[unprocessed], rdistances)
-        ### Checks to see if everything is already processed; if so, return control to main loop ##
-        if len(unprocessed) > 0:
-#            print sorted(zip(SetOfObjects._reachability[unprocessed],unprocessed), key=lambda reachability: reachability[0])[0][1]
-            ### Define return order based on reachability distance ###
-            return sorted(zip(SetOfObjects._reachability[unprocessed],unprocessed), key=lambda reachability: reachability[0])[0][1]
-        else:
-            return point_index
-    else: ## Not sure if this else statement is actaully needed... ##
-        return point_index
 
 
 ## Extract DBSCAN Equivalent cluster structure ##
 
 # Important: Epsilon prime should be less than epsilon used in OPTICS #
-def ExtractDBSCAN(SetOfObjects, epsilon_prime):
-
-    """Performs DBSCAN equivalent extraction for arbitrary epsilon. Can be run multiple times.
-    Parameters
-    ----------
-    SetOfObjects: Prepped and build instance of setOfObjects
-    epsilon_prime: float or int
-        Must be less than or equal to what was used for prep and build steps
-    Returns
-    -------
-    Modified setOfObjects with cluster_id and is_core attributes."""
-
-    # Start Cluster_id at zero, incremented to '1' for first cluster
-    cluster_id = 0
-    for entry in SetOfObjects._ordered_list:
-        if SetOfObjects._reachability[entry] > epsilon_prime:
-            if SetOfObjects._core_dist[entry] <= epsilon_prime:
-                cluster_id += 1
-                SetOfObjects._cluster_id[entry] = cluster_id
-                # Two gives first member of the cluster; not meaningful, as first cluster members do not correspond to centroids #
-                ## SetOfObjects._is_core[entry] = 2     ## Breaks boolean array :-( ##
-            else:
-                # This is only needed for compatibility for repeated scans. -1 is Noise points #
-                SetOfObjects._cluster_id[entry] = -1
-        else:
-            SetOfObjects._cluster_id[entry] = cluster_id
-            if SetOfObjects._core_dist[entry] <= epsilon_prime:
-                # One (i.e., 'True') for core points #
-                SetOfObjects._is_core[entry] = 1
-            else:
-                # Zero (i.e., 'False') for non-core, non-noise points #
-                SetOfObjects._is_core[entry] = 0
 

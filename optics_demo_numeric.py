@@ -23,6 +23,8 @@ X, labels_tru = make_blobs(n_samples=750, centers=centers, cluster_std=0.4)
 # typ odleglosci - dostepne 'euclidean' i 'hamming'
 dtype = "euclidean"
 
+name = './list-numeric-eps_'+str(epsilon)+'_mpts_'+str(minpts)+'.txt'
+name = './list-numeric-eps_'+str(epsilon)+'_mpts_'+str(minpts)+'.txt', names=['i', 'rd']
 
 minpts = 5
 epsilon = 0.7
@@ -31,10 +33,10 @@ op.prep_optics(testtree, epsilon, minpts, dtype) # dla kazdego punktu znajduje o
                         # czyli takie punkty, dla ktorych odleglosc od danego punktu jest <= epsilon     
                         # oraz dla kazdego punktu z tego otoczenia oblicza core distance
                         # (tu jest wykorzystywany parametr minpts)
-op.build_optics(testtree, epsilon, minpts,'./list-numeric-eps_'+str(epsilon)+'_mpts_'+str(minpts)+'.txt', dtype)
+op.build_optics(testtree, epsilon, minpts, name, dtype)
                         # w tej funkcji obliczane sa reachability distance, na podstawie ktorych
                         # ustalany jest odpowiedni porzadek punktow
-f = p.read_csv('./list-numeric-eps_'+str(epsilon)+'_mpts_'+str(minpts)+'.txt', names=['i', 'rd'])
+f = p.read_csv(name, names=['i', 'rd'])
                         # wynik jest zapisywany w powyzszym pliku txt, zawiera on dwie kolumny:
                         # w pierwszej id punktu, w drugiej reachability distance danego punktu
                         # UWAGA! przy kazdym uzyciu trzeba plik usunac, poniewaz zawartosc jest dodawana,

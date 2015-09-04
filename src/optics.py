@@ -28,21 +28,16 @@ class setOfObjects(object):
         self._ordered_list  =   []                                  ### DO NOT switch this to a hash table, ordering is important ###
 
     def _set_neighborhood(self, point, epsilon, dtype):
-        print 'ddd'
         self._neighbors[point] = self.get_neighbors_dist(point, epsilon, dtype)[0]
-        print self._neighbors[point]
         self._nneighbors[point] = len(self._neighbors[point])
 
     def _set_core_dist(self, point, MinPts, dtype):
         dist = []
-        print 'bbb'
         for j in self._neighbors[point]:
-            print 'aaa', self._data_points[point], self._data_points[j], dtype
             dist.append(self.distance(self._data_points[point], self._data_points[j], dtype))
         self._core_dist[point] = min_k(dist, MinPts)
 
     def prep_optics(self, epsilon, MinPts, dtype = "euclidean"):
-        print 'ccc'
         for i in self._index:
             self._set_neighborhood(i, epsilon, dtype)
         for j in self._index:
@@ -54,20 +49,13 @@ class setOfObjects(object):
         neigh = []
         dist = []
         for j in it.ifilter(lambda x: x!=point, self._index):
-#        for j in self._index if j != point:
             d = self.distance(self._data_points[point], self._data_points[j], dtype)
             if d <= epsilon:
-                print d , '<=', epsilon
                 neigh.append(j)
                 dist.append(d)
         return neigh, dist
 
     def distance(self, x, y, dtype):
-       # if dtype == "euclidean":
-       #     return sqrt(sum((x - y)**2))
-       # elif dtype == "hamming":
-       #     return hamming_loss(x, y)
-       # elif dtype == "banana":
         try:
             return self._dist_dict[tuple(sorted((x, y)))]
         except KeyError as e:
@@ -78,13 +66,11 @@ class setOfObjects(object):
 
     def build_optics(self, epsilon, MinPts, Output_file_name, dtype = "euclidean"):
         for point in self._index:
-            print self._processed[point]
             if self._processed[point] == False:
                 self.expandClusterOrder(point, epsilon, MinPts, Output_file_name, dtype)
 
 
     def expandClusterOrder(self, point, epsilon, MinPts, Output_file_name, dtype):
-        print self._core_dist[point], epsilon, self._core_dist[point] <= epsilon
         if self._core_dist[point] <= epsilon:
             while not self._processed[point]:
                 self._processed[point] = True
@@ -137,33 +123,3 @@ def filter_list(x, y):
         if v2:
             z.append(v1)
     return z
-
-
-
-
-
-
-## Prep Method ##
-
-### Paralizeable! ###
-#def prep_optics(SetofObjects, epsilon, MinPts, dtype = "euclidean"):
-#    for i in SetofObjects._index:
-#        SetofObjects._set_neighborhood(i, epsilon, dtype)
-#    for j in SetofObjects._index:
-#        if SetofObjects._nneighbors[j] >= MinPts:
-#            SetofObjects._set_core_dist(j, MinPts, dtype)
-#    print('Core distances and neighborhoods prepped for ' + str(SetofObjects._n) + ' points.')
-#
-## Main OPTICS loop ##
-
-
-
-
-
-### As above, NOT paralizable! Paralizing would allow items in 'unprocessed' list to switch to 'processed' ###
-
-
-## Extract DBSCAN Equivalent cluster structure ##
-
-# Important: Epsilon prime should be less than epsilon used in OPTICS #
-

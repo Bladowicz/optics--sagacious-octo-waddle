@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import optics
+from src import *
 from sklearn.datasets.samples_generator import make_blobs
 import pylab as pl
 import pandas as p
@@ -20,7 +20,7 @@ def get_distance(in_file):
 
 
 if __name__=="__main__":
-    minpts = 5
+    minpts = 3
     #epsilon = 0.7
     #epsilon = 1.5
     epsilon = 5

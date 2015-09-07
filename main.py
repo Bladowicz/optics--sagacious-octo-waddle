@@ -3,7 +3,7 @@ from src import *
 from sklearn.datasets.samples_generator import make_blobs
 import pylab as pl
 import pandas as p
-import optics as op
+import src.optics as op
 import numpy as np
 import os, itertools
 from math import sqrt
@@ -59,9 +59,9 @@ if __name__=="__main__":
     if os.access(outfile, 0): os.remove(outfile)
 
     #labels, distance = get_distance( 'lifts.csv')
-    labels, distance = get_from_list('iris_proc')
+    #labels, distance = get_from_list('iris_proc')
     #raise()
-    #labels, distance = get_from_temp('temp1')
+    labels, distance = get_from_temp('temp1')
     testtree = optics.setOfObjects(labels, distance)
     testtree.prep_optics(epsilon, minpts)
     testtree.build_optics(epsilon, minpts, outfile)
